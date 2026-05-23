@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AC Brand Recommender</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>AC Brand Recommender</h1>
+      <form action="/predict" method="post" class="predict-form">
+        <label>
+          Temperature (°C)
+          <input type="number" step="0.1" name="temperature" min="15" max="45" required />
+        </label>
+        <label>
+          Budget (₹)
+          <input type="number" name="cost" min="10000" max="200000" required />
+        </label>
+        <label>
+          AC Type
+          <select name="ac_type" required>
+            {% for ac_type in ac_types %}
+            <option value="{{ ac_type }}">{{ ac_type }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Month
+          <select name="month" required>
+            {% for month in months %}
+            <option value="{{ month }}">{{ month }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Submit</button>
+      </form>
+
+      {% if result %}
+      <div class="result-card">
+        <h2>Recommended Brand</h2>
+        <p><strong>{{ result.recommended_brand }}</strong></p>
+        <h3>Input</h3>
+        <ul>
+          <li>Temperature: {{ result.input.temperature }} °C</li>
+          <li>Cost: ₹{{ result.input.cost }}</li>
+          <li>AC Type: {{ result.input.ac_type }}</li>
+          <li>Month: {{ result.input.month }}</li>
+        </ul>
+        {% if result.top_brands %}
+        <h3>Top brand scores</h3>
+        <ul>
+          {% for item in result.top_brands %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </body>
+</html>

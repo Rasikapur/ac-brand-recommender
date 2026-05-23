@@ -1,0 +1,8 @@
+Flask==2.3.3
+scikit-learn==1.4.2
+pandas==2.2.3
+joblib==1.4.2
+
+# Optional for web scraping or external API calls if you extend the data fetcher
+requests==2.31.0
+beautifulsoup4==4.12.2

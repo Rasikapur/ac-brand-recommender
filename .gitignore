@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+ac_brand_model.joblib
+ac_sales_data.csv
+.DS_Store
