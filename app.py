@@ -17,9 +17,6 @@ def load_model():
         MODEL = joblib.load(MODEL_PATH)
 
 
-load_model()
-
-
 @app.route("/", methods=["GET"])
 def index():
     ac_types = ["Window", "Split", "Inverter", "Portable"]
@@ -50,6 +47,9 @@ def predict():
             "month": month,
         }
     ])
+
+    if MODEL is None:
+        load_model()
 
     if MODEL is None:
         return jsonify({"error": "Model not loaded."}), 500
