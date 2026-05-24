@@ -52,8 +52,8 @@ jobs:
           print('Model file is present')
           PY
 
-  docker-build:
-    name: Docker build
+  docker-build-and-smoke-test:
+    name: Docker build and localhost smoke test
     runs-on: ubuntu-latest
     needs: python-ci
 
@@ -67,18 +67,6 @@ jobs:
       - name: Build Docker image
         run: |
           docker build --tag ac-brand-recommender:ci .
-
-  deploy-local:
-    name: Deploy to localhost for smoke test
-    runs-on: ubuntu-latest
-    needs: docker-build
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
 
       - name: Run container in background
         run: |
