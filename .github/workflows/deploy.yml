@@ -1,0 +1,148 @@
+name: Deploy
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'environments/**'
+      - 'Dockerfile'
+      - 'app.py'
+      - 'requirements.txt'
+      - 'data_fetch.py'
+      - 'train.py'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [dev, prod]
+        default: dev
+      terraform_apply:
+        description: Run terraform apply (plan-only if false)
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: ac-brand-recommender-dev
+  ECS_CLUSTER: ac-brand-recommender-dev-cluster
+  ECS_SERVICE: ac-brand-recommender-dev-service
+  TF_ROOT: environments/dev
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::463436898355:role/BitbucketPipelineRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: Terraform fmt
+        run: terraform fmt -check
+        continue-on-error: true
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_ROOT }}/tfplan
+
+      - name: Terraform apply
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && inputs.terraform_apply) }}
+        run: terraform apply -auto-approve tfplan
+
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    needs: [terraform]
+    if: ${{ !cancelled() && needs.terraform.result == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::463436898355:role/BitbucketPipelineRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push docker image to ECR
+        id: build-image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $REGISTRY/$ECR_REPOSITORY:latest
+          docker push --all-tags $REGISTRY/$ECR_REPOSITORY
+
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition $ECR_REPOSITORY \
+            --query taskDefinition \
+            --output json > task-definition.json
+
+      - name: Render new task definition
+        id: task-def
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          jq ".containerDefinitions[0].image = \"$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG\"" \
+            task-definition.json > new-task-definition.json
+
+      - name: Register task definition
+        id: register-td
+        run: |
+          aws ecs register-task-definition \
+            --cli-input-json file://new-task-definition.json \
+            --query taskDefinition.taskDefinitionArn \
+            --output text
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition ${{ steps.register-td.outputs.result }} \
+            --force-new-deployment \
+            --region $AWS_REGION
+
+      - name: Wait for ECS deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --region $AWS_REGION

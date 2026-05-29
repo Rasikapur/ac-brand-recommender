@@ -7,3 +7,9 @@ __pycache__/
 ac_brand_model.joblib
 ac_sales_data.csv
 .DS_Store
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
