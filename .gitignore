@@ -12,4 +12,3 @@ ac_sales_data.csv
 **/.terraform/
 *.tfstate
 *.tfstate.backup
-*.tfvars
